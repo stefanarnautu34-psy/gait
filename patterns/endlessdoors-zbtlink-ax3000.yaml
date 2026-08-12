@@ -1,0 +1,75 @@
+id: "endlessdoors-zbtlink-ax3000"
+name: "ENDLESSDOORS / Zbtlink AX3000 backdoor"
+family: "ENDLESSDOORS"
+cve: "CVE-2026-66747"
+version: 1
+created: "2026-08-11"
+updated: "2026-08-11"
+author: "Stefan Arnautu / DataAudit.net"
+source:
+  name: "VulnCheck"
+  url: "https://www.vulncheck.com/advisories/zbt-endlessdoors"
+  published: "2026-08-05"
+description: >
+  Factory-installed root-control implant found in Zbtlink router firmware and
+  in rebranded units sold under other names. Built on the open-source rctl
+  project. Runs under the process name "kworker" without square brackets,
+  imitating genuine kernel threads, and is started at boot by an init.d script
+  named skworker. It opens no listening port. It initiates cleartext outbound
+  connections with no authentication and no transport encryption to a hardcoded
+  command-and-control server, using port 7000 for the command channel and 7001
+  for the interactive shell callback, retrying roughly every 35 seconds.
+severity: "critical"
+
+behavior:
+  connection_direction:
+    value: "outbound"
+    confidence_weight: 0.6
+    verified: "clear"
+
+  trigger:
+    value: "boot"
+    confidence_weight: 0.7
+    verified: "clear"
+
+  dns_lookup_before:
+    value: "unknown"
+    confidence_weight: 0.8
+    verified: "assumed"
+
+  payload_size_bytes:
+    min: null
+    max: null
+    confidence_weight: 0.5
+    verified: "assumed"
+
+  auth_present:
+    value: false
+    confidence_weight: 0.75
+    verified: "clear"
+
+  destination_asn_hint:
+    value: []
+    confidence_weight: 0.65
+    verified: "assumed"
+
+  process_name_pattern:
+    value: "^kworker"
+    note: "no square brackets, unlike genuine [kworker/*] kernel threads"
+    confidence_weight: 0.6
+    verified: "clear"
+
+  c2_port_hint:
+    value: [7000, 7001]
+    confidence_weight: 0.7
+    verified: "clear"
+
+  beacon_interval_seconds:
+    value: 35
+    tolerance_seconds: 5
+    confidence_weight: 0.65
+    verified: "clear"
+
+scoring:
+  method: "weighted_sum"
+  threshold_alert: 0.7
