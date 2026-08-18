@@ -1,0 +1,55 @@
+id: "evooo1bot-mirai-botnet"
+name: "Evooo1Bot Linux/IoT Botnet Implant"
+family: "Evooo1Bot"
+version: 1
+created: "2026-08-18"
+updated: "2026-08-18"
+author: "Stefan Arnautu / DataAudit.net"
+source:
+  name: "FortiGuard Labs"
+  url: "https://www.fortinet.com/blog/threat-research/multi-functional-linux-botnet-evooo1bot"
+  published: "2026-08-13"
+description: >
+  Multi-architecture Linux bot derived from Mirai source code, actively
+  exploiting at least ten vulnerabilities across router and edge-device
+  vendors (NETGEAR, Tenda, D-Link, Alcatel OmniPCX, Telesquare and
+  Mitsubishi RTU gear among them) to drop and launch a bot binary on the
+  device. Once running, it checks in with a hardcoded command-and-control
+  host on port 443, disguising the traffic as ordinary HTTPS while the
+  payload itself carries AES-256-CTR/ChaCha20-obfuscated commands. Beyond
+  DDoS flooding, it can open a SOCKS5 relay to proxy attacker traffic
+  through the infected device and brute-forces other SSH-exposed hosts
+  with a large built-in credential list. Persistence is layered across a
+  systemd service with automatic restart, an rc.local entry, and a
+  five-minute cron job that re-fetches the loader.
+severity: "critical"
+
+behavior:
+  connection_direction:
+    value: "outbound"
+    confidence_weight: 0.5
+    verified: "clear"
+
+  trigger:
+    value: "boot"
+    confidence_weight: 0.55
+    verified: "clear"
+
+  dns_lookup_before:
+    value: false
+    confidence_weight: 0.55
+    verified: "assumed"
+
+  auth_present:
+    value: false
+    confidence_weight: 0.2
+    verified: "assumed"
+
+  c2_port_hint:
+    value: [443]
+    confidence_weight: 0.35
+    verified: "clear"
+
+scoring:
+  method: "weighted_sum"
+  threshold_alert: 0.7
