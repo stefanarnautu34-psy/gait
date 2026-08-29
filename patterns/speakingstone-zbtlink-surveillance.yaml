@@ -1,0 +1,67 @@
+id: "speakingstone-zbtlink-surveillance"
+name: "SPEAKINGSTONE Zbtlink Cloud Surveillance Implant"
+family: "SPEAKINGSTONE"
+cve: "CVE-2026-74232"
+version: 1
+created: "2026-08-29"
+updated: "2026-08-29"
+author: "Stefan Arnautu / DataAudit.net"
+source:
+  name: "VulnCheck"
+  url: "https://www.vulncheck.com/blog/zbt-darklantern-speakingstone"
+  published: "2026-08-27"
+description: >
+  Phone-home surveillance implant found in older Zbtlink/MoreQuick
+  router firmware, distinct from both ENDLESSDOORS and DARKLANTERN.
+  Runs as a service named yunmgrd and beacons outbound over UDP port
+  10000 to a hardcoded command-and-control domain resolving to
+  Alibaba Cloud infrastructure in Shenzhen, with a hardcoded backup
+  domain used when no primary C2 is configured. The registration
+  beacon carries a full device fingerprint (model, firmware, MAC,
+  SSID, LAN IP, uptime, GPS coordinates on some builds) in cleartext
+  or with a single-byte XOR obfuscation, depending on the build.
+  Inbound commands from the C2 are always plaintext with no
+  authentication. Supported remote commands go well beyond simple
+  control: arbitrary shell execution, DNS hijack list installation,
+  exfiltration of WAN PPPoE credentials, and opening a reverse SSH
+  tunnel. Internet sinkholing of the backup domain collected beacons
+  from 392 unique devices, the large majority active in China on a
+  single carrier CPE model and firmware build.
+severity: "critical"
+
+behavior:
+  connection_direction:
+    value: "outbound"
+    confidence_weight: 0.5
+    verified: "clear"
+
+  dns_lookup_before:
+    value: true
+    confidence_weight: 0.55
+    verified: "clear"
+
+  payload_size_bytes:
+    min: 60
+    max: null
+    confidence_weight: 0.35
+    verified: "assumed"
+
+  auth_present:
+    value: false
+    confidence_weight: 0.5
+    verified: "clear"
+
+  process_name_pattern:
+    value: "^yunmgrd$"
+    note: "Nim-compiled ELF service binary; on affected devices, launched alongside inetdetect and, where present, infosrvd (DARKLANTERN)"
+    confidence_weight: 0.7
+    verified: "clear"
+
+  c2_port_hint:
+    value: [10000]
+    confidence_weight: 0.7
+    verified: "clear"
+
+scoring:
+  method: "weighted_sum"
+  threshold_alert: 0.7

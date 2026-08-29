@@ -1,0 +1,58 @@
+id: "darklantern-zbtlink-backdoor"
+name: "DARKLANTERN Zbtlink/MoreQuick WAN Listener Backdoor"
+family: "DARKLANTERN"
+cve: "CVE-2026-74233"
+version: 1
+created: "2026-08-29"
+updated: "2026-08-29"
+author: "Stefan Arnautu / DataAudit.net"
+source:
+  name: "VulnCheck"
+  url: "https://www.vulncheck.com/blog/zbt-darklantern-speakingstone"
+  published: "2026-08-27"
+description: >
+  Unauthenticated WAN-facing backdoor found in older Zbtlink/MoreQuick
+  router and access-point firmware (2018-2020 builds), distinct from the
+  previously documented ENDLESSDOORS implant. Runs as a service named
+  infosrvd, listening on UDP port 9992, which the device's default
+  firewall explicitly allows inbound from anywhere on the internet. A
+  19-byte info probe with no authentication returns the device's model,
+  firmware version, MAC address, SSID, and uptime in cleartext. A
+  separate command packet type executes arbitrary shell commands as
+  root; the packet's checksum relies on a hardcoded static salt that
+  makes it trivially forgeable, and a MAC-address filter can be bypassed
+  entirely by sending an all-zero MAC field. Internet scanning identified
+  203 exposed instances across 22 countries and 16 router models.
+severity: "critical"
+
+behavior:
+  connection_direction:
+    value: "inbound"
+    confidence_weight: 0.55
+    verified: "clear"
+
+  payload_size_bytes:
+    min: 19
+    max: 19
+    confidence_weight: 0.65
+    verified: "clear"
+
+  auth_present:
+    value: false
+    confidence_weight: 0.5
+    verified: "clear"
+
+  process_name_pattern:
+    value: "^infosrvd$"
+    note: "Nim-compiled ELF service binary; also launched alongside inetdetect and, on SPEAKINGSTONE-equipped devices, yunmgrd"
+    confidence_weight: 0.7
+    verified: "clear"
+
+  c2_port_hint:
+    value: [9992]
+    confidence_weight: 0.75
+    verified: "clear"
+
+scoring:
+  method: "weighted_sum"
+  threshold_alert: 0.7
