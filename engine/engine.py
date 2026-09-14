@@ -62,6 +62,44 @@ CLEARTEXT_PROTOCOLS = {"http", "ftp", "telnet", "smtp", "dns", "smb", "nfs",
 # source of false positives.
 UNIDENTIFIED_PROTOCOLS = {"failed", "unknown"}
 
+# Fields that are true of the implant but true of almost everything else too.
+# "outbound TLS after a DNS lookup" describes a backdoor and it describes a
+# browser, so a pattern that matches only on these has not identified anything.
+# They still contribute to the score; they just cannot carry an alert alone.
+GENERIC_FIELDS = {
+    "connection_direction",
+    "auth_present",
+    "dns_lookup_before",
+    "trigger",
+    "payload_size_bytes",
+}
+
+# Ports so widely used that finding one in a pattern's C2 list says nothing
+# about this particular connection.
+COMMON_PORTS = {80, 443, 53, 22, 123, 8080, 8443}
+
+# Beacon sanity limits. Three connections give two intervals, which is not a
+# rhythm - it is two numbers that happen to be similar. And a percentage
+# tolerance on a 12-hour interval opens a window hours wide, wide enough for
+# any daily update check to fall into.
+MIN_BEACON_GAPS = 3          # so at least 4 connections
+MAX_BEACON_TOLERANCE = 900.0  # seconds, 15 minutes either side at most
+MAX_BEACON_SPREAD = 0.25      # max(gap)-min(gap) must stay within 25% of median
+
+
+def is_discriminant(field, entry):
+    """Did this matched field actually narrow anything down?
+
+    Generic fields never do. c2_port_hint does only when the port it matched is
+    not one everything else uses: a pattern listing 443 matches all of HTTPS.
+    """
+    if field in GENERIC_FIELDS:
+        return False
+    if field == "c2_port_hint":
+        port = entry.get("observed_port")
+        return port is not None and port not in COMMON_PORTS
+    return True
+
 
 # ---------------------------------------------------------------------------
 # Pattern loading
@@ -505,6 +543,9 @@ def ev_c2_port_hint(block, cand, tel, ctx):
     if not ports:
         return UNEVALUABLE, "pattern states no ports"
     if cand.dest_port in ports:
+        if cand.dest_port in COMMON_PORTS:
+            return MATCH, (f"destination port {cand.dest_port} is in the pattern "
+                           "list, but it is a common port and narrows nothing down")
         return MATCH, f"destination port {cand.dest_port} is in the pattern list"
     return MISMATCH, f"destination port {cand.dest_port} is not in the pattern list"
 
@@ -513,18 +554,41 @@ def ev_beacon_interval_seconds(block, cand, tel, ctx):
     expected = block.get("value")
     if not isinstance(expected, (int, float)) or isinstance(expected, bool):
         return UNEVALUABLE, "pattern states no interval"
+
+    # A percentage tolerance is fine for short intervals and far too loose for
+    # long ones: 15% of 12 hours is a window almost two hours wide either way,
+    # which any once-a-day service can wander into. Cap it.
     tol = block.get("tolerance_seconds")
-    tol = tol if isinstance(tol, (int, float)) and not isinstance(tol, bool) \
-        else max(1.0, expected * 0.15)
+    if isinstance(tol, (int, float)) and not isinstance(tol, bool):
+        tol = float(tol)
+    else:
+        tol = min(max(1.0, expected * 0.15), MAX_BEACON_TOLERANCE)
 
     gaps = cand.intervals()
-    if len(gaps) < ctx["min_beacons"] - 1:
-        return UNEVALUABLE, (f"only {len(gaps) + 1} connection(s), "
-                             "not enough to establish a rhythm")
+    needed = max(ctx["min_beacons"] - 1, MIN_BEACON_GAPS)
+    if len(gaps) < needed:
+        return UNEVALUABLE, (f"only {len(gaps) + 1} connection(s), need at least "
+                             f"{needed + 1} to establish a rhythm")
+
     median = statistics.median(gaps)
+
+    # A real beacon keeps time. Several services started together at boot
+    # produce near-identical medians across unrelated destinations, which is
+    # what a wide tolerance mistakes for a rhythm. Require the intervals to be
+    # tight relative to their own median before trusting the median at all.
+    spread = (max(gaps) - min(gaps)) / median if median else float("inf")
+    if spread > MAX_BEACON_SPREAD:
+        return UNEVALUABLE, (f"intervals are not regular enough to be a beacon "
+                             f"(median {round(median, 1)}s, spread "
+                             f"{round(spread * 100)}% of the median over "
+                             f"{len(gaps)} interval(s))")
+
+    detail = (f"median interval {round(median, 1)}s, expected {expected}s "
+              f"+/- {round(tol, 1)}s, spread {round(spread * 100)}% over "
+              f"{len(gaps)} interval(s)")
     if abs(median - expected) <= tol:
-        return MATCH, f"median interval {median}s, expected {expected}s +/- {tol}s"
-    return MISMATCH, f"median interval {median}s, expected {expected}s +/- {tol}s"
+        return MATCH, detail
+    return MISMATCH, detail
 
 
 EVALUATORS = {
@@ -551,6 +615,12 @@ def score_candidate(pattern, cand, tel, ctx):
     Fields the logs cannot speak to drop out of the calculation entirely, but
     they are reported through 'coverage' so a high score is never mistaken for
     strong evidence.
+
+    Matched fields are also split into discriminant and generic. A pattern can
+    reach score 1.0 on generic fields alone - outbound, encrypted, preceded by
+    DNS - which is a description of ordinary traffic, not of an implant. The
+    alert decision in build_record() therefore requires at least one
+    discriminant match as well.
     """
     matched, mismatched, skipped = [], [], []
     w_match = w_eval = w_total = 0.0
@@ -575,7 +645,10 @@ def score_candidate(pattern, cand, tel, ctx):
             "verified": block.get("verified"),
             "note": note,
         }
+        if field == "c2_port_hint":
+            entry["observed_port"] = cand.dest_port
         if verdict == MATCH:
+            entry["discriminant"] = is_discriminant(field, entry)
             matched.append(entry)
             w_match += weight
             w_eval += weight
@@ -587,19 +660,36 @@ def score_candidate(pattern, cand, tel, ctx):
 
     score = (w_match / w_eval) if w_eval else 0.0
     coverage = (w_eval / w_total) if w_total else 0.0
+    discriminant = [m["field"] for m in matched if m.get("discriminant")]
     return {
         "score": round(score, 3),
         "coverage": round(coverage, 3),
+        "discriminant_fields": discriminant,
         "matched": matched,
         "mismatched": mismatched,
         "unevaluable": skipped,
     }
 
 
-def build_record(pattern, cand, outcome, threshold):
+def build_record(pattern, cand, outcome, threshold, require_discriminant=True):
     ts = cand.timestamps
     gaps = cand.intervals()
     sizes = cand.payload_sizes()
+
+    over_threshold = outcome["score"] >= threshold
+    has_discriminant = bool(outcome["discriminant_fields"])
+    alert = over_threshold and (has_discriminant or not require_discriminant)
+
+    if not over_threshold:
+        reason = "score below threshold"
+    elif alert:
+        reason = "score above threshold, discriminant evidence present" \
+            if has_discriminant else "score above threshold (discriminant check disabled)"
+    else:
+        reason = ("score above threshold but every matched field is generic "
+                  "(outbound / encrypted / DNS / common port), so nothing "
+                  "distinguishes this from ordinary traffic")
+
     return {
         "timestamp": datetime.fromtimestamp(
             ts[-1] if ts else 0, tz=timezone.utc).isoformat(),
@@ -612,8 +702,10 @@ def build_record(pattern, cand, outcome, threshold):
             "severity": pattern.get("severity"),
             "score": outcome["score"],
             "threshold": threshold,
-            "alert": outcome["score"] >= threshold,
+            "alert": alert,
+            "alert_reason": reason,
             "coverage": outcome["coverage"],
+            "discriminant_fields": outcome["discriminant_fields"],
             "matched_fields": [m["field"] for m in outcome["matched"]],
             "mismatched_fields": [m["field"] for m in outcome["mismatched"]],
             "unevaluable_fields": [m["field"] for m in outcome["unevaluable"]],
@@ -693,6 +785,10 @@ def main():
     ap.add_argument("--loose-process", action="store_true",
                     help="accept host-level process correlation even when Falco "
                          "cannot tie the process to the connection")
+    ap.add_argument("--allow-generic-only", action="store_true",
+                    help="alert even when every matched field is generic "
+                         "(outbound / encrypted / DNS / common port); off by "
+                         "default because it fires on ordinary traffic")
     ap.add_argument("--all", action="store_true",
                     help="report matches below the threshold as well")
     ap.add_argument("--pretty", action="store_true",
@@ -744,7 +840,9 @@ def main():
             if outcome["coverage"] < args.min_coverage:
                 continue
             if outcome["score"] >= thr or args.all:
-                records.append(build_record(pattern, cand, outcome, thr))
+                records.append(build_record(
+                    pattern, cand, outcome, thr,
+                    require_discriminant=not args.allow_generic_only))
 
     records.sort(key=lambda r: r["gait"]["score"], reverse=True)
 
@@ -759,7 +857,13 @@ def main():
         sys.stdout.write(text)
 
     alerts = sum(1 for r in records if r["gait"]["alert"])
-    print(f"[info] {alerts} match(es) above the threshold", file=sys.stderr)
+    generic = sum(1 for r in records
+                  if not r["gait"]["alert"]
+                  and r["gait"]["score"] >= r["gait"]["threshold"])
+    print(f"[info] {alerts} alert(s)", file=sys.stderr)
+    if generic:
+        print(f"[info] {generic} match(es) scored above the threshold on generic "
+              f"fields only and did not alert (see alert_reason)", file=sys.stderr)
     return 1 if alerts else 0
 
 
