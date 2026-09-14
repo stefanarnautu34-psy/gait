@@ -1,0 +1,47 @@
+id: kimwolf-aisuru-android-tv-boxes-and-set-top-boxes-arm-former
+name: Kimwolf v7 Bot Payload
+family: Kimwolf / AISURU
+version: 1
+created: '2026-09-14'
+updated: '2026-09-14'
+author: Stefan Arnautu / DataAudit.net
+source:
+  name: Unit 42
+  url: https://unit42.paloaltonetworks.com/kimwolf-v7-botnet-malware/
+  published: '2026-08-11'
+description: >-
+  Kimwolf v7 is an Android/IoT DDoS botnet that masquerades as a legitimate system
+  process and communicates over a layered command-and-control scheme combining Ethereum
+  Name Service (ENS) lookups, a Tor .onion fallback, and a local SOCKS-style proxy
+  on the device. The bot resolves C2 addresses by querying public Ethereum RPC endpoints
+  in a randomized order, falling back to a hardcoded Tor hidden service if that
+  fails, and all traffic—clearnet or Tor—is routed through a local proxy bound to
+  a fixed port. Observed live C2 traffic used HTTPS and a nonstandard port 13 against
+  a small cluster of Russian-hosted IPs identified via a shared SSH host key. The
+  malware supports 15 DDoS attack methods including a stealthy HTTP/2 flood that
+  spoofs full Chrome browser fingerprints to evade detection.
+severity: high
+behavior:
+  connection_direction:
+    value: outbound
+    confidence_weight: 0.6
+    verified: clear
+  dns_lookup_before:
+    value: false
+    confidence_weight: 0.8
+    verified: clear
+  destination_asn_hint:
+    value: [202799]
+    confidence_weight: 0.65
+    verified: clear
+  process_name_pattern:
+    value: ^netd_service$
+    confidence_weight: 0.6
+    verified: clear
+  c2_port_hint:
+    value: [13, 443, 23075]
+    confidence_weight: 0.7
+    verified: clear
+scoring:
+  method: weighted_sum
+  threshold_alert: 0.7

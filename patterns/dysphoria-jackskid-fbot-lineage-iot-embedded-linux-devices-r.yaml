@@ -1,0 +1,57 @@
+id: dysphoria-jackskid-fbot-lineage-iot-embedded-linux-devices-r
+name: Dysphoria
+family: Dysphoria (jackskid/fbot lineage)
+version: 1
+created: '2026-09-14'
+updated: '2026-09-14'
+author: Stefan Arnautu / DataAudit.net
+source:
+  name: Qianxin XLab
+  url: https://blog.xlab.qianxin.com/botnet-rising-star-the-evolution-and-in-depth-technical-analysis-of-dysphoria/
+  published: '2026-07-29'
+description: >-
+  Dysphoria is a rapidly evolving IoT botnet derived from the jackskid and fbot
+  codebases that has added blockchain-based (ENS/SNS) C2 resolution and a relay/proxy
+  transformation capability. DDoS-capable bots resolve C2 relay node lists via Ethereum/Solana
+  name service TXT records, decode obfuscated IPv4 addresses, and then query a distribution
+  endpoint over HTTP to obtain live relay/C2 IPs. Newer 'relay' variants strip out
+  DDoS functionality entirely and instead use UPnP to open large numbers of forwarded
+  ports on victim NAT gateways, relaying traffic bidirectionally between attackers
+  and downstream C2 infrastructure. Relay nodes periodically report health/status
+  information back to a hardcoded collection domain, and both DDoS and relay samples
+  disguise their running process name to blend in with legitimate Android system
+  processes.</br>
+severity: high
+behavior:
+  connection_direction:
+    value: bidirectional
+    confidence_weight: 0.6
+    verified: clear
+  trigger:
+    value: boot
+    confidence_weight: 0.7
+    verified: clear
+  payload_size_bytes:
+    min: 78
+    max: 78
+    confidence_weight: 0.5
+    verified: clear
+  auth_present:
+    value: true
+    confidence_weight: 0.75
+    verified: clear
+  process_name_pattern:
+    value: libdalvikengine
+    confidence_weight: 0.6
+    verified: clear
+  c2_port_hint:
+    value: [9000]
+    confidence_weight: 0.7
+    verified: clear
+  beacon_interval_seconds:
+    value: 4
+    confidence_weight: 0.65
+    verified: clear
+scoring:
+  method: weighted_sum
+  threshold_alert: 0.7
