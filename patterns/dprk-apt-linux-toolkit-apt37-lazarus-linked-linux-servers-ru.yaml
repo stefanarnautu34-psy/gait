@@ -1,0 +1,54 @@
+id: dprk-apt-linux-toolkit-apt37-lazarus-linked-linux-servers-ru
+name: Ted backdoor / curlRAT toolkit
+family: DPRK APT Linux toolkit (APT37/Lazarus-linked)
+version: 1
+created: '2026-09-14'
+updated: '2026-09-14'
+author: Stefan Arnautu / DataAudit.net
+source:
+  name: Rapid7
+  url: https://www.rapid7.com/blog/post/tr-dprk-apts-ted-backdoor-curlrat-target-south-korean-media-automotive-sectors
+  published: '2026-09-04'
+description: >-
+  A Linux-based implant set that trojanizes system daemons (crond, agetty, atd,
+  polkitd, sshd) and a recompiled HAProxy binary to give an attacker persistent,
+  low-visibility control over compromised edge and internal servers. The curlRAT
+  component periodically polls an external C2 server over HTTPS/HTTP using libcurl,
+  authenticating requests with a hardcoded API token and a per-victim ID embedded
+  in a custom header, then executes commands, drops payloads, or opens reverse/PTY
+  shells based on decoded instructions. The Ted backdoor is compiled directly into
+  HAProxy and only activates its C2 channel when it observes a specially crafted
+  incoming HTTP request to a hidden endpoint, after which it tunnels commands and
+  responses through HAProxy's own connection pipeline while scrubbing internal counters
+  to hide the activity. Both components layer custom XOR and substitution ciphers
+  plus Base64 encoding around their C2 traffic and configuration files to avoid
+  signature detection.
+severity: high
+behavior:
+  connection_direction:
+    value: outbound
+    confidence_weight: 0.6
+    verified: clear
+  trigger:
+    value: periodic
+    confidence_weight: 0.7
+    verified: clear
+  auth_present:
+    value: true
+    confidence_weight: 0.75
+    verified: clear
+  process_name_pattern:
+    value: ^(crond|agetty|atd|polkitd|sshd)$
+    confidence_weight: 0.6
+    verified: clear
+  dns_lookup_before:
+    value: true
+    confidence_weight: 0.8
+    verified: assumed
+  beacon_interval_seconds:
+    value: 43200
+    confidence_weight: 0.65
+    verified: clear
+scoring:
+  method: weighted_sum
+  threshold_alert: 0.7
