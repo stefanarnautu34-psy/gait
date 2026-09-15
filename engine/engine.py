@@ -69,6 +69,7 @@ UNIDENTIFIED_PROTOCOLS = {"failed", "unknown"}
 GENERIC_FIELDS = {
     "connection_direction",
     "auth_present",
+    "transport_encryption",
     "dns_lookup_before",
     "trigger",
     "payload_size_bytes",
@@ -484,7 +485,8 @@ def ev_payload_size_bytes(block, cand, tel, ctx):
     return MISMATCH, f"median {median} bytes, outside the range {lo}-{hi}"
 
 
-def ev_auth_present(block, cand, tel, ctx):
+def ev_transport_encryption(block, cand, tel, ctx):
+    """Is the channel encrypted in transit? This the IDS can actually tell us."""
     expected = block.get("value")
     if not isinstance(expected, bool):
         return UNEVALUABLE, "pattern states no value"
@@ -501,13 +503,36 @@ def ev_auth_present(block, cand, tel, ctx):
         observed = False
     else:
         # Only 'failed'/'unknown' left: Suricata could not identify the protocol.
-        # That is an absence of information, not evidence of missing auth.
+        # An absence of information, not evidence of cleartext.
         return UNEVALUABLE, (f"protocol not identified by the IDS "
-                             f"({sorted(protos)}), cannot infer authentication")
+                             f"({sorted(protos)}), cannot tell encrypted from not")
 
-    if observed == expected:
-        return MATCH, f"protocols observed: {sorted(protos)} (heuristic)"
-    return MISMATCH, f"protocols observed: {sorted(protos)} (heuristic)"
+    verdict = MATCH if observed == expected else MISMATCH
+    return verdict, f"protocols observed: {sorted(protos)}"
+
+
+def ev_auth_present(block, cand, tel, ctx):
+    """Always unevaluable from network telemetry alone, and that is the point.
+
+    This used to read any encrypted protocol as "authentication present" and any
+    cleartext one as absent. Those are different things. TLS says nothing about
+    whether the application authenticates: a connection can be encrypted and
+    anonymous, or cleartext and carrying a bearer token. The two patterns in the
+    library that set this field mean application-level authentication in both
+    cases - Ted's hardcoded API token in a User-token header, DARKLANTERN's
+    unauthenticated 19-byte probe - and neither is visible in flow records.
+
+    The heuristic was not merely imprecise, it manufactured matches: on
+    2026-09-14 auth_present matched on plain TLS in every one of the Ted false
+    positives. Reporting honestly that we cannot check it costs coverage, which
+    is exactly the signal coverage exists to give. Patterns that really mean
+    "the channel is encrypted" should use transport_encryption instead.
+    """
+    if not isinstance(block.get("value"), bool):
+        return UNEVALUABLE, "pattern states no value"
+    return UNEVALUABLE, ("application-level authentication is not visible in "
+                         "network flow records; use transport_encryption if the "
+                         "pattern meant encryption in transit")
 
 
 def ev_destination_asn_hint(block, cand, tel, ctx):
@@ -612,6 +637,7 @@ EVALUATORS = {
     "dns_lookup_before": ev_dns_lookup_before,
     "payload_size_bytes": ev_payload_size_bytes,
     "auth_present": ev_auth_present,
+    "transport_encryption": ev_transport_encryption,
     "destination_asn_hint": ev_destination_asn_hint,
     "process_name_pattern": ev_process_name_pattern,
     "c2_port_hint": ev_c2_port_hint,
