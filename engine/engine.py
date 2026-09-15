@@ -378,19 +378,32 @@ def build_candidates(tel, local_nets, min_flows):
 
     out = []
     dropped_broadcast = 0
+    dropped_internal = 0
     for cand in groups.values():
         if len(cand.flows) < min_flows:
             continue
         if is_non_unicast(cand.dest_ip, local_nets):
             dropped_broadcast += 1
             continue
-        # Internal traffic is not what we are looking for; implants call out.
-        if is_local(cand.dest_ip, local_nets):
+        src_local = is_local(cand.src_ip, local_nets)
+        dst_local = is_local(cand.dest_ip, local_nets)
+        # Traffic entirely within the LAN is out of scope: neither endpoint is
+        # the internet, so it is neither C2 (outbound) nor an attacker reaching
+        # a local listener (inbound). Both of THOSE are kept, even though one
+        # has a local destination - an external source calling a local port is
+        # exactly the DARKLANTERN scenario. Dropping every local-destination
+        # candidate here used to make inbound patterns unmatchable no matter
+        # what the traffic looked like (found 15.09.2026 via code review).
+        if src_local and dst_local:
+            dropped_internal += 1
             continue
         out.append(cand)
 
     if dropped_broadcast:
         print(f"[info] {dropped_broadcast} broadcast/multicast destination(s) ignored",
+              file=sys.stderr)
+    if dropped_internal:
+        print(f"[info] {dropped_internal} purely internal candidate(s) ignored",
               file=sys.stderr)
     return out
 
@@ -405,7 +418,9 @@ def build_candidates(tel, local_nets, min_flows):
 
 def ev_connection_direction(block, cand, tel, ctx):
     expected = block.get("value")
-    observed = "outbound" if not is_local(cand.dest_ip, ctx["local_nets"]) else "inbound"
+    # Candidates with both endpoints local are dropped in build_candidates, so
+    # a local destination here always means an external source reached it.
+    observed = "inbound" if is_local(cand.dest_ip, ctx["local_nets"]) else "outbound"
     if expected == "bidirectional":
         return MATCH, "pattern accepts either direction"
     if expected == observed:

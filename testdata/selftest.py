@@ -157,6 +157,41 @@ scoring:
 """
 
 
+P4_ID = "selftest-inbound-listener"
+
+P4 = """\
+id: selftest-inbound-listener
+name: Selftest - inbound WAN listener
+family: Selftest
+version: 1
+created: '2026-09-15'
+updated: '2026-09-15'
+author: GAIT selftest
+source:
+  name: selftest
+  url: https://example.invalid/selftest
+  published: '2026-09-15'
+description: >-
+  Synthetic pattern for testdata/selftest.py, shaped like the real DARKLANTERN
+  entry: a backdoor that listens rather than calls out. It exists because
+  build_candidates used to discard every candidate with a local destination,
+  which made inbound patterns unmatchable no matter what the traffic was.
+severity: low
+behavior:
+  connection_direction:
+    value: inbound
+    confidence_weight: 0.55
+    verified: clear
+  c2_port_hint:
+    value: [9992]
+    confidence_weight: 0.75
+    verified: clear
+scoring:
+  method: weighted_sum
+  threshold_alert: 0.7
+"""
+
+
 # label, pattern id to assert on, dest ip, port, app proto,
 # offsets in seconds, expected alert, why the case exists
 CASES = [
@@ -203,6 +238,17 @@ CASES = [
      [0, 43560, 87120, 130680, 174240], True,
      "360s off target is within any sane cap; a real implant that drifts a "
      "little must still be caught"),
+
+    ("I  external source reaching a local listener",
+     P4_ID, "192.168.88.115", 9992, "failed",
+     [0, 900, 1800, 2700], True,
+     "DARKLANTERN listens instead of calling out; before 15.09.2026 this "
+     "candidate was discarded before any pattern could see it"),
+
+    ("J  purely internal traffic",
+     P4_ID, "192.168.88.50", 9992, "failed",
+     [0, 900, 1800, 2700], False,
+     "LAN to LAN is neither C2 nor inbound attack, and must stay out of scope"),
 ]
 
 
@@ -213,10 +259,17 @@ def write_eve(path):
         for off in offsets:
             ts = (base + timedelta(seconds=off)).strftime(
                 "%Y-%m-%dT%H:%M:%S.000000+0000")
+            # Cases whose destination is inside LOCAL_NET are inbound: the
+            # source has to be external for the direction to mean anything.
+            # Case J is the exception - both ends local, deliberately.
+            if ip.startswith("192.168.88."):
+                src = SRC if ip == "192.168.88.50" else "198.51.100.7"
+            else:
+                src = SRC
             rows.append({
                 "timestamp": ts,
                 "event_type": "flow",
-                "src_ip": SRC,
+                "src_ip": src,
                 "dest_ip": ip,
                 "dest_port": port,
                 "proto": "TCP",
@@ -264,6 +317,7 @@ def main():
     (pdir / "p1.yaml").write_text(P1, encoding="utf-8")
     (pdir / "p2.yaml").write_text(P2, encoding="utf-8")
     (pdir / "p3.yaml").write_text(P3, encoding="utf-8")
+    (pdir / "p4.yaml").write_text(P4, encoding="utf-8")
     eve = tmp / "eve.json"
     write_eve(eve)
 
