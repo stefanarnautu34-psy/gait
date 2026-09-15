@@ -712,6 +712,35 @@ def score_candidate(pattern, cand, tel, ctx):
     }
 
 
+def compute_confidence(outcome, has_discriminant):
+    """One number a SOC can sort on, derived from what is already reported.
+
+    It adds no information; it combines what the record already says into a
+    single figure, so a queue can be ordered without reading four fields:
+
+      score       how much of what we could test agreed
+      coverage    how much of the pattern we could test at all
+      evidence    fields the source stated outright count more than ones it
+                  only implied (verified: clear vs assumed)
+      discriminant  a verdict resting on nothing specific is heavily discounted
+
+    score 1.0 at coverage 0.28 with no discriminant field is a real combination
+    and it should not look like certainty.
+    """
+    matched = outcome["matched"]
+    if matched:
+        w_total = sum(m["weight"] for m in matched) or 1.0
+        w_clear = sum(m["weight"] for m in matched if m.get("verified") == "clear")
+        evidence = 0.75 + 0.25 * (w_clear / w_total)
+    else:
+        evidence = 0.75
+
+    confidence = outcome["score"] * outcome["coverage"] * evidence
+    if not has_discriminant:
+        confidence *= 0.25
+    return round(min(1.0, max(0.0, confidence)), 3)
+
+
 def build_record(pattern, cand, outcome, threshold, require_discriminant=True):
     ts = cand.timestamps
     gaps = cand.intervals()
@@ -746,6 +775,7 @@ def build_record(pattern, cand, outcome, threshold, require_discriminant=True):
             "alert": alert,
             "alert_reason": reason,
             "coverage": outcome["coverage"],
+            "confidence": compute_confidence(outcome, has_discriminant),
             "discriminant_fields": outcome["discriminant_fields"],
             "matched_fields": [m["field"] for m in outcome["matched"]],
             "mismatched_fields": [m["field"] for m in outcome["mismatched"]],
