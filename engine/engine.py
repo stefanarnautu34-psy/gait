@@ -712,33 +712,41 @@ def score_candidate(pattern, cand, tel, ctx):
     }
 
 
-def compute_confidence(outcome, has_discriminant):
-    """One number a SOC can sort on, derived from what is already reported.
+def compute_evidence(outcome):
+    """How well sourced are the fields that matched?
 
-    It adds no information; it combines what the record already says into a
-    single figure, so a queue can be ordered without reading four fields:
-
-      score       how much of what we could test agreed
-      coverage    how much of the pattern we could test at all
-      evidence    fields the source stated outright count more than ones it
-                  only implied (verified: clear vs assumed)
-      discriminant  a verdict resting on nothing specific is heavily discounted
-
-    score 1.0 at coverage 0.28 with no discriminant field is a real combination
-    and it should not look like certainty.
+    Weighted by confidence_weight rather than counted, because a `clear` field
+    the pattern considers decisive should move this more than a `clear` field
+    it considers incidental. Floors at 0.75: `assumed` means the source implied
+    it rather than stated it, which is weaker provenance, not worthless.
     """
     matched = outcome["matched"]
-    if matched:
-        w_total = sum(m["weight"] for m in matched) or 1.0
-        w_clear = sum(m["weight"] for m in matched if m.get("verified") == "clear")
-        evidence = 0.75 + 0.25 * (w_clear / w_total)
-    else:
-        evidence = 0.75
+    if not matched:
+        return 0.75
+    w_total = sum(m["weight"] for m in matched) or 1.0
+    w_clear = sum(m["weight"] for m in matched if m.get("verified") == "clear")
+    return round(0.75 + 0.25 * (w_clear / w_total), 3)
 
-    confidence = outcome["score"] * outcome["coverage"] * evidence
-    if not has_discriminant:
-        confidence *= 0.25
-    return round(min(1.0, max(0.0, confidence)), 3)
+
+def compute_confidence(outcome, evidence):
+    """How well the evidence supports the observation. Deliberately says
+    nothing about whether it deserves an alert.
+
+    Those are separate questions and were briefly conflated here: an earlier
+    version multiplied this by 0.25 when no discriminant field matched, which
+    punished the same situation twice, since `alert` already goes false for it.
+    It also gave the wrong answer. A pattern that matches perfectly on fields
+    the logs could all test has been confirmed as well as it can be; that the
+    pattern happens to contain nothing distinguishing is a fact about the
+    pattern, not a reason to distrust the observation.
+
+    So: confidence answers "does the evidence hold up", alert answers "is any
+    of it specific enough to act on". Read them together - has_discriminant is
+    in the record for exactly that.
+
+    Heuristic and uncalibrated: 0.8 is not an 80% probability of compromise.
+    """
+    return round(min(1.0, max(0.0, outcome["score"] * outcome["coverage"] * evidence)), 3)
 
 
 def build_record(pattern, cand, outcome, threshold, require_discriminant=True):
@@ -746,6 +754,7 @@ def build_record(pattern, cand, outcome, threshold, require_discriminant=True):
     gaps = cand.intervals()
     sizes = cand.payload_sizes()
 
+    evidence = compute_evidence(outcome)
     over_threshold = outcome["score"] >= threshold
     has_discriminant = bool(outcome["discriminant_fields"])
     alert = over_threshold and (has_discriminant or not require_discriminant)
@@ -775,7 +784,9 @@ def build_record(pattern, cand, outcome, threshold, require_discriminant=True):
             "alert": alert,
             "alert_reason": reason,
             "coverage": outcome["coverage"],
-            "confidence": compute_confidence(outcome, has_discriminant),
+            "evidence": evidence,
+            "confidence": compute_confidence(outcome, evidence),
+            "has_discriminant": has_discriminant,
             "discriminant_fields": outcome["discriminant_fields"],
             "matched_fields": [m["field"] for m in outcome["matched"]],
             "mismatched_fields": [m["field"] for m in outcome["mismatched"]],
