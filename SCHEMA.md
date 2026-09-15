@@ -78,7 +78,8 @@ ones.
 | `trigger` | `value:` one of `boot`, `scheduled`, `periodic`, `on_demand`, `unknown` | `"unknown"` | What starts the implant's activity. |
 | `dns_lookup_before` | `value:` boolean | `"unknown"` | Whether the implant resolves a domain before connecting, or talks to a hardcoded IP. |
 | `payload_size_bytes` | `min:`, `max:` (integers, either may be `null`) | both `null` | Expected size range of the connection's initial payload, in bytes. |
-| `auth_present` | `value:` boolean | `"unknown"` | Whether the C2 channel authenticates the client. |
+| `auth_present` | `value:` boolean | `"unknown"` | Whether the C2 channel authenticates the client, at the application level. Document it when the source says so, but note that `engine.py` reports this field as unevaluable from network telemetry: flow records do not show application-level authentication. It costs coverage and contributes nothing to the score. |
+| `transport_encryption` | `value:` boolean | `"unknown"` | Whether the channel is encrypted in transit. This one the IDS can check, by the protocol it identifies. Distinct from `auth_present`: a TLS connection can be anonymous, and cleartext HTTP can carry a bearer token. If a source says "communicates over HTTPS", it is describing this field, not the one above. |
 | `destination_asn_hint` | `value:` list of ASNs (numbers or `"AS12345"` strings) | `[]` | Known hosting ASN(s) for the C2 infrastructure, if documented. |
 | `process_name_pattern` | `value:` a regular expression string; optional `note:` | `null` or `""` | Process name to look for in host telemetry (e.g. Falco). Kept short and simple — see the ReDoS note below. |
 | `c2_port_hint` | `value:` list of integers, 1–65535 | `[]` | Known C2 port(s). |

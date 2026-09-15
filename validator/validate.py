@@ -88,6 +88,9 @@ BEHAVIOR_FIELDS = {
     "auth_present": {
         "kind": "bool",
     },
+    "transport_encryption": {
+        "kind": "bool",
+    },
     "destination_asn_hint": {
         "kind": "asn_list",
     },
