@@ -1,0 +1,47 @@
+id: cd00r-variant-j-magic-campaign-juniper-enterprise-grade-rout
+name: J-magic
+family: cd00r variant (J-magic campaign)
+version: 1
+created: '2026-09-16'
+updated: '2026-09-16'
+author: Stefan Arnautu / DataAudit.net
+source:
+  name: Lumen Black Lotus Labs
+  url: https://www.lumen.com/blog/en-us/j-magic-show-magic-packets
+  published: '2025-01-23'
+description: >-
+  J-magic is a passive backdoor deployed on enterprise-grade Juniper routers running
+  JunOS, based on a customized variant of the open-source cd00r tool. The implant
+  sniffs inbound TCP traffic via an eBPF pcap filter, waiting for one of five predefined
+  'magic packet' byte patterns before activating. Upon match, it extracts an attacker-supplied
+  IP and port from the packet and opens an outbound reverse shell over SSL to that
+  address. Before granting shell access, it issues an RSA-encrypted challenge string
+  that the remote operator must echo back correctly, adding an authentication layer
+  not seen in earlier cd00r-based malware. The agent renames its process to masquerade
+  as a legitimate system service and lives entirely in memory to evade detection
+  on long-uptime routers, many of which serve as corporate VPN gateways.
+severity: high
+behavior:
+  connection_direction:
+    value: bidirectional
+    confidence_weight: 0.6
+    verified: clear
+  trigger:
+    value: on_demand
+    confidence_weight: 0.7
+    verified: clear
+  auth_present:
+    value: true
+    confidence_weight: 0.75
+    verified: clear
+  process_name_pattern:
+    value: ^\[nfsiod [01]\]$
+    confidence_weight: 0.6
+    verified: clear
+  c2_port_hint:
+    value: [443]
+    confidence_weight: 0.7
+    verified: clear
+scoring:
+  method: weighted_sum
+  threshold_alert: 0.7
