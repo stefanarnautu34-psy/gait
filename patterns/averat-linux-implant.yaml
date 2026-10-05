@@ -1,0 +1,58 @@
+id: "averat-linux-implant"
+name: "AVERAT Linux implant (ORB-class, Taiwanese network edge)"
+family: "AVERAT"
+version: 1
+created: "2026-10-05"
+updated: "2026-10-05"
+author: "Stefan Arnautu / DataAudit.net"
+source:
+  name: "Rapid7"
+  url: "https://www.rapid7.com/blog/post/tr-smtp-is-the-key-bpfdoor-averat-hitting-the-network-edge"
+  published: "2026-10-02"
+description: >
+  Modular Linux implant dropped onto Taiwanese network-edge appliances,
+  mainly mail security gateways, by a local installer whose encryption key is
+  derived from the ShareTech vendor name. The binary is launched from /sbin as
+  udevds and deleted from disk about ten seconds later, so the process keeps
+  running with no file behind it. It calls out over TCP port 25, starts with an
+  ordinary SMTP greeting and STARTTLS, then continues with a custom TLS-like
+  session whose peer check is a shared-secret handshake inside the application
+  layer. Check-ins arrive every 600 to 699 seconds; the interval is kept in a
+  hidden state file, survives restarts and can be changed by the operator. C2
+  addresses are either attacker-registered domains or hardcoded IPs of
+  compromised consumer and SMB devices (NAS, DVR, broadband appliances) in
+  Chunghwa Telecom HiNet space (AS3462). Capabilities include interactive
+  shells, file transfer, module loading and proxying.
+severity: "high"
+
+behavior:
+  connection_direction:
+    value: "outbound"
+    confidence_weight: 0.3
+    verified: "clear"
+
+  destination_asn_hint:
+    value: [3462]
+    confidence_weight: 0.4
+    verified: "clear"
+
+  process_name_pattern:
+    value: "^udevds$"
+    note: "staged and started as /sbin/udevds, file removed after launch; genuine udev daemons are named udevd"
+    confidence_weight: 0.5
+    verified: "assumed"
+
+  c2_port_hint:
+    value: [25]
+    confidence_weight: 0.6
+    verified: "clear"
+
+  beacon_interval_seconds:
+    value: 650
+    tolerance_seconds: 50
+    confidence_weight: 0.65
+    verified: "clear"
+
+scoring:
+  method: "weighted_sum"
+  threshold_alert: 0.7
